@@ -213,9 +213,11 @@ function buildVisitMarker(
   meta?: DayMetadata,
 ): L.CircleMarker {
   const hasMedia = mediaFiles.length > 0;
-  const radius = visit.hierarchyLevel >= 1
+  const isMobile = window.matchMedia('(pointer: coarse)').matches;
+  const baseRadius = visit.hierarchyLevel >= 1
     ? (editMode ? 11 : 8)
     : (editMode ? 8 : 5);
+  const radius = hasMedia && isMobile ? Math.max(baseRadius, 14) : baseRadius;
   const marker = L.circleMarker([visit.location.lat, visit.location.lng], {
     radius,
     color: VISIT_STROKE,
