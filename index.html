@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NZ March 2026 — Timeline Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Loading overlay -->
+      <div id="loading-overlay">
+        <div class="spinner"></div>
+        <p id="loading-text">Loading timeline data…</p>
+      </div>
+
+      <div id="mobile-backdrop" aria-hidden="true"></div>
+
+      <div id="mobile-topbar">
+        <button id="mobile-sidebar-toggle" aria-label="Open day list" title="Open day list">☰</button>
+        <div id="mobile-topbar-title">
+          <strong>NZ 2026</strong>
+          <span>Timeline Map</span>
+        </div>
+        <div id="mobile-day-summary" aria-live="polite">
+          <strong id="mobile-day-label"></strong>
+          <span id="mobile-day-meta"></span>
+        </div>
+          <button id="mobile-next-day" aria-label="Show next day" title="Show next day">Next day</button>
+        <button id="mobile-show-all" aria-label="Show all days" title="Show all days">Show all</button>
+      </div>
+
+      <section id="mobile-day-notes" hidden>
+        <button
+          id="mobile-day-notes-toggle"
+          type="button"
+          aria-expanded="false"
+          aria-controls="mobile-day-notes-panel"
+        >
+          <span id="mobile-day-notes-label">Journal notes</span>
+          <span id="mobile-day-notes-summary"></span>
+          <span class="mobile-day-notes-chevron" aria-hidden="true">▾</span>
+        </button>
+        <div id="mobile-day-notes-panel" hidden></div>
+      </section>
+
+      <!-- Sidebar -->
+      <aside id="sidebar">
+        <div id="sidebar-header">
+          <h1>NZ 2026</h1>
+          <p id="sidebar-subtitle">Timeline Map</p>
+        </div>
+
+        <!-- Day list -->
+        <div id="day-list-header">
+          <span>Days</span>
+          <button id="btn-show-all" title="Show all days">All</button>
+        </div>
+        <ul id="day-list"></ul>
+      </aside>
+
+      <!-- Map -->
+      <div id="map-area">
+        <div id="map"></div>
+        <!-- Floating legend (top-right of map) -->
+        <div id="legend">
+          <button id="legend-toggle" aria-expanded="false" aria-label="Legend" title="Legend">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+              <rect x="1" y="2" width="14" height="2.5" rx="1.25"/>
+              <rect x="1" y="6.75" width="14" height="2.5" rx="1.25"/>
+              <rect x="1" y="11.5" width="14" height="2.5" rx="1.25"/>
+            </svg>
+          </button>
+          <div id="legend-panel" style="display:none">
+            <div id="legend-header-row">Legend</div>
+            <ul id="legend-list"></ul>
+          </div>
+        </div>
+
+        <!-- Visit detail panel (right-side overlay, toggled by marker click) -->
+        <div id="visit-panel" aria-hidden="true">
+          <div id="visit-panel-header">
+            <div id="visit-panel-title">Visit details</div>
+            <button id="visit-panel-collapse" aria-label="Back to map" title="Back to map">Back to map</button>
+            <button id="visit-panel-close" aria-label="Close" title="Close">✕</button>
+          </div>
+          <div id="visit-panel-content"></div>
+        </div>
+
+        <!-- Hint text — shown briefly on load -->
+        <div id="map-hint" role="status" aria-live="polite">Click a marker to see more info</div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
