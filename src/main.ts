@@ -101,7 +101,9 @@ async function main(): Promise<void> {
 
   // 2. Init map
   const map = initMap('map');
+  const appShell = document.getElementById('app')!;
   const mapArea = document.getElementById('map-area')!;
+  const mobileTopbar = document.getElementById('mobile-topbar')!;
   const mobileTopbarTitle = document.getElementById('mobile-topbar-title')!;
   const mobileDaySummary = document.getElementById('mobile-day-summary')!;
   const mobileDayLabel = document.getElementById('mobile-day-label')!;
@@ -112,6 +114,7 @@ async function main(): Promise<void> {
   const mobileDayNotesPanel = document.getElementById('mobile-day-notes-panel')!;
   const mobileNextDayButton = document.getElementById('mobile-next-day') as HTMLButtonElement;
   const mobileShowAllButton = document.getElementById('mobile-show-all') as HTMLButtonElement;
+  const mobileBackToMapButton = document.getElementById('mobile-back-to-map') as HTMLButtonElement;
   const showAllDaysButton = document.getElementById('btn-show-all') as HTMLButtonElement;
 
   // ── Visit panel ────────────────────────────────────────────────────
@@ -133,6 +136,72 @@ async function main(): Promise<void> {
   let selectedDay: import('./types').ParsedDay | null = null;
   let mobileNotesExpanded = false;
   let mobileNotesPreferenceExpanded = false;
+  let mobileButtonStateFrame = 0;
+  // Tracks whether the "Back to map" button is currently showing, so we can
+  // debounce the revert to "Next day / Show all" and avoid scroll-inertia stutter.
+  let mobileShowingBackToMap = false;
+  let mobileRevertTimer = 0;
+
+  function isVisitSectionInView(): boolean {
+    if (!isPhoneLayout() || !selectedDay || !visitPanel.classList.contains('visit-panel--open')) {
+      return false;
+    }
+    const topbarRect = mobileTopbar.getBoundingClientRect();
+    const visitPanelRect = visitPanel.getBoundingClientRect();
+    return visitPanelRect.top <= topbarRect.bottom + 8;
+  }
+
+  // immediate=true → apply synchronously (used for known state changes: panel open/close, day change).
+  // immediate=false (default) → debounce the "Back to map → Next/ShowAll" transition to absorb
+  //   scroll inertia, which would otherwise cause rapid button flickering as the threshold
+  //   is crossed back and forth.
+  function updateMobileActionButtons(immediate = false): void {
+    const hasSingleDay = selectedDay !== null;
+    const inView = hasSingleDay && isVisitSectionInView();
+    const showAllLabel = hasSingleDay ? 'Show all' : 'First day';
+    const showAllTitle = hasSingleDay ? 'Show all days' : 'Show first day';
+
+    mobileShowAllButton.textContent = showAllLabel;
+    mobileShowAllButton.setAttribute('aria-label', showAllTitle);
+    mobileShowAllButton.title = showAllTitle;
+
+    if (inView) {
+      // Entering "Back to map": always immediate; cancel any pending revert.
+      clearTimeout(mobileRevertTimer);
+      mobileRevertTimer = 0;
+      mobileShowingBackToMap = true;
+    } else if (mobileShowingBackToMap && !immediate) {
+      // Leaving "Back to map" via scroll: debounce to let inertia settle.
+      if (mobileRevertTimer === 0) {
+        mobileRevertTimer = window.setTimeout(() => {
+          mobileRevertTimer = 0;
+          mobileShowingBackToMap = false;
+          const hasSingleDayNow = selectedDay !== null;
+          mobileNextDayButton.hidden = !hasSingleDayNow;
+          mobileShowAllButton.hidden = false;
+          mobileBackToMapButton.hidden = true;
+        }, 150);
+      }
+      return; // DOM update deferred to the timer callback
+    } else {
+      // Immediate reset (panel closed, day changed, etc.).
+      clearTimeout(mobileRevertTimer);
+      mobileRevertTimer = 0;
+      mobileShowingBackToMap = false;
+    }
+
+    mobileNextDayButton.hidden = !hasSingleDay || mobileShowingBackToMap;
+    mobileShowAllButton.hidden = mobileShowingBackToMap;
+    mobileBackToMapButton.hidden = !mobileShowingBackToMap;
+  }
+
+  function scheduleMobileActionButtonsUpdate(): void {
+    if (mobileButtonStateFrame !== 0) return;
+    mobileButtonStateFrame = window.requestAnimationFrame(() => {
+      mobileButtonStateFrame = 0;
+      updateMobileActionButtons(); // non-immediate: debounce applies for the revert direction
+    });
+  }
 
   function setMobileNotesExpanded(expanded: boolean): void {
     mobileNotesExpanded = expanded;
@@ -171,14 +240,13 @@ async function main(): Promise<void> {
     const hasSingleDay = day !== null;
     mobileTopbarTitle.hidden = hasSingleDay;
     mobileDaySummary.hidden = !hasSingleDay;
-    mobileNextDayButton.hidden = !hasSingleDay;
-    mobileShowAllButton.hidden = !hasSingleDay;
 
     if (!day) {
       mobileDayLabel.textContent = '';
       mobileDayMeta.textContent = '';
       mobileNextDayButton.disabled = true;
       updateMobileJournalNotes(null);
+      updateMobileActionButtons(true);
       return;
     }
 
@@ -187,6 +255,7 @@ async function main(): Promise<void> {
     mobileDayMeta.textContent = day.metadata?.location ?? `${day.visits.length} stop${day.visits.length === 1 ? '' : 's'}`;
     mobileNextDayButton.disabled = dayIndex === -1 || dayIndex >= dayLayers.length - 1;
     updateMobileJournalNotes(day);
+    updateMobileActionButtons(true);
   }
 
   function scrollToVisitSection(): void {
@@ -213,6 +282,7 @@ async function main(): Promise<void> {
     visitPanel.classList.add('visit-panel--open');
     visitPanel.setAttribute('aria-hidden', 'false');
     invalidateMapSize();
+    updateMobileActionButtons(true);
     // Defer scroll until after the browser has processed the display:none→flex
     // change and the invalidateMapSize rAF, so the layout is stable.
     if (opts?.scrollToVisit !== false) {
@@ -233,6 +303,7 @@ async function main(): Promise<void> {
     visitPanel.setAttribute('aria-hidden', 'true');
     visitPanelContent.innerHTML = '';
     invalidateMapSize();
+    updateMobileActionButtons(true);
     if (options?.scrollToMap) {
       scrollToMapSection();
     }
@@ -317,10 +388,9 @@ async function main(): Promise<void> {
     addExportBar(rawTimeline, timeline.days);
   }
 
-  mobileShowAllButton.addEventListener('click', () => {
-    showAllDaysButton.click();
+  mobileBackToMapButton.addEventListener('click', () => {
     closeSidebarDrawer();
-    hideVisitPanel({ scrollToMap: isPhoneLayout() });
+    hideVisitPanel({ scrollToMap: true });
   });
 
   // 5. Sidebar
@@ -345,7 +415,9 @@ async function main(): Promise<void> {
         );
         if (firstMediaVisit) {
           const mediaFiles = mediaManifest[firstMediaVisit.visitId!] ?? [];
-          showVisitPanel(buildVisitPanelContent(firstMediaVisit, mediaFiles), undefined, { scrollToVisit: false });
+          const dayLayer = dayLayers.find(dl => dl.day.dateKey === day?.dateKey);
+          const marker = firstMediaVisit.visitId ? dayLayer?.visitMarkers.get(firstMediaVisit.visitId) : undefined;
+          showVisitPanel(buildVisitPanelContent(firstMediaVisit, mediaFiles), marker, { scrollToVisit: false });
         } else {
           hideVisitPanel();
         }
@@ -364,6 +436,23 @@ async function main(): Promise<void> {
     closeSidebarDrawer();
   });
 
+  mobileShowAllButton.addEventListener('click', () => {
+    if (selectedDay) {
+      showAllDaysButton.click();
+      closeSidebarDrawer();
+      hideVisitPanel({ scrollToMap: isPhoneLayout() });
+      return;
+    }
+
+    const firstDay = dayLayers[0]?.day;
+    if (!firstDay) return;
+    sidebar.selectDayByKey(firstDay.dateKey);
+    closeSidebarDrawer();
+  });
+
+  appShell.addEventListener('scroll', scheduleMobileActionButtonsUpdate, { passive: true });
+  window.addEventListener('resize', scheduleMobileActionButtonsUpdate);
+
   // 5b. Sidebar diary editors (must run after buildSidebar has created the day-list DOM)
   if (isEditMode()) {
     addSidebarDiaryEditors(timeline.days);
@@ -376,6 +465,7 @@ async function main(): Promise<void> {
   }
 
   invalidateMapSize();
+  updateMobileActionButtons(true);
 
   hideLoading();
 

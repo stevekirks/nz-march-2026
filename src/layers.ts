@@ -33,6 +33,7 @@ const PATH_PANE = 'path-pane';
 const PATH_ARROW_PANE = 'path-arrow-pane';
 const PATH_POINT_PANE = 'path-point-pane';
 const VISIT_PANE = 'visit-pane';
+const VISIT_MEDIA_PANE = 'visit-media-pane';
 
 function getStyle(type: ActivityType): PathStyle {
   return ACTIVITY_STYLES[type] ?? DEFAULT_STYLE;
@@ -225,7 +226,7 @@ function buildVisitMarker(
     fillColor: VISIT_FILL,
     fillOpacity: 0.90,
     className: hasMedia ? `visit-marker ${VISIT_MEDIA_CLASS}` : 'visit-marker',
-    pane: VISIT_PANE,
+    pane: hasMedia ? VISIT_MEDIA_PANE : VISIT_PANE,
   });
   marker.on('click', (e: L.LeafletMouseEvent) => {
     // Stop both DOM and Leaflet's internal event propagation so the map's
@@ -262,6 +263,7 @@ function buildPathPointMarker(
 export interface DayLayer {
   group: L.LayerGroup;
   day: ParsedDay;
+  visitMarkers: Map<string, L.CircleMarker>;
 }
 
 export function buildDayLayers(
@@ -273,6 +275,7 @@ export function buildDayLayers(
 ): DayLayer[] {
   return days.map(day => {
     const group = L.layerGroup();
+    const visitMarkers = new Map<string, L.CircleMarker>();
 
     // GPS track segments
     for (const seg of day.segments) {
@@ -283,7 +286,9 @@ export function buildDayLayers(
     for (const visit of day.visits) {
       const mediaFiles = (visit.visitId ? (mediaManifest[visit.visitId] ?? []) : []);
       if (onVisitClick) {
-        buildVisitMarker(visit, day.dateKey, day.label, mediaFiles, onVisitClick, editMode, day.metadata).addTo(group);
+        const m = buildVisitMarker(visit, day.dateKey, day.label, mediaFiles, onVisitClick, editMode, day.metadata);
+        m.addTo(group);
+        if (visit.visitId) visitMarkers.set(visit.visitId, m);
       }
     }
 
@@ -296,7 +301,7 @@ export function buildDayLayers(
       }
     }
 
-    return { group, day };
+    return { group, day, visitMarkers };
   });
 }
 
@@ -336,6 +341,8 @@ export function initMap(containerId: string): L.Map {
   map.getPane(PATH_POINT_PANE)!.style.zIndex = '430';
   map.createPane(VISIT_PANE);
   map.getPane(VISIT_PANE)!.style.zIndex = '440';
+  map.createPane(VISIT_MEDIA_PANE);
+  map.getPane(VISIT_MEDIA_PANE)!.style.zIndex = '450';
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution:

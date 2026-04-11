@@ -167,7 +167,8 @@ body {
 }
 
 #mobile-next-day,
-#mobile-show-all {
+#mobile-show-all,
+#mobile-back-to-map {
   display: none;
   flex-shrink: 0;
   min-height: 38px;
@@ -1061,7 +1062,8 @@ body {
   }
 
   #mobile-next-day:not([hidden]),
-  #mobile-show-all:not([hidden]) {
+  #mobile-show-all:not([hidden]),
+  #mobile-back-to-map:not([hidden]) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1193,9 +1195,7 @@ body {
   }
 
   #visit-panel-collapse {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    display: none;
   }
 
   #visit-panel-close {
@@ -1235,7 +1235,8 @@ body {
   }
 
   #mobile-next-day,
-  #mobile-show-all {
+  #mobile-show-all,
+  #mobile-back-to-map {
     padding: 0 10px;
   }
 }
