@@ -157,7 +157,7 @@ async function main(): Promise<void> {
   //   is crossed back and forth.
   function updateMobileActionButtons(immediate = false): void {
     const hasSingleDay = selectedDay !== null;
-    const inView = hasSingleDay && isVisitSectionInView();
+    const inView = isVisitSectionInView();
     const showAllLabel = hasSingleDay ? 'Show all' : 'First day';
     const showAllTitle = hasSingleDay ? 'Show all days' : 'Show first day';
 
