@@ -143,7 +143,7 @@ async function main(): Promise<void> {
   let mobileRevertTimer = 0;
 
   function isVisitSectionInView(): boolean {
-    if (!isPhoneLayout() || !selectedDay || !visitPanel.classList.contains('visit-panel--open')) {
+    if (!isPhoneLayout() || !visitPanel.classList.contains('visit-panel--open')) {
       return false;
     }
     const topbarRect = mobileTopbar.getBoundingClientRect();
