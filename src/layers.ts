@@ -132,7 +132,7 @@ function escAttr(s: string): string {
 function mediaHtml(visitId: string, files: string[]): string {
   if (files.length === 0) return '';
   const items = files.map(file => {
-    const url = `/media/${encodeURIComponent(visitId)}/${encodeURIComponent(file)}`;
+    const url = `${import.meta.env.BASE_URL}media/${encodeURIComponent(visitId)}/${encodeURIComponent(file)}`;
     if (/\.(mp4|mov|webm)$/i.test(file)) {
       return `<div class="popup-media-item">
         <video class="popup-media-video" controls preload="metadata">
