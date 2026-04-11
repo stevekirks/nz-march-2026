@@ -199,7 +199,7 @@ async function main(): Promise<void> {
     mapArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  function showVisitPanel(html: string, marker?: L.CircleMarker): void {
+  function showVisitPanel(html: string, marker?: L.CircleMarker, opts?: { scrollToVisit?: boolean }): void {
     // Remove animation from the previously active marker
     if (activeMarker) {
       activeMarker.getElement()?.classList.remove('visit-marker--active');
@@ -213,7 +213,15 @@ async function main(): Promise<void> {
     visitPanel.classList.add('visit-panel--open');
     visitPanel.setAttribute('aria-hidden', 'false');
     invalidateMapSize();
-    scrollToVisitSection();
+    // Defer scroll until after the browser has processed the display:none→flex
+    // change and the invalidateMapSize rAF, so the layout is stable.
+    if (opts?.scrollToVisit !== false) {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          scrollToVisitSection();
+        });
+      });
+    }
   }
 
   function hideVisitPanel(options?: { scrollToMap?: boolean }): void {
@@ -321,8 +329,28 @@ async function main(): Promise<void> {
     map,
     (_dateKey, _visible) => { /* visibility handled by onDaySelected */ },
     (day) => {
+      const prevDay = selectedDay;
       selectedDay = day;
       updateMobileTopbar(day);
+      // If a visit panel is open and the user switched to a different day,
+      // show the first visit with media on the new day (if any), else hide;
+      // always scroll back up to the map.
+      if (
+        !isEditMode() &&
+        (prevDay === null || day?.dateKey !== prevDay.dateKey) &&
+        visitPanel.classList.contains('visit-panel--open')
+      ) {
+        const firstMediaVisit = day?.visits.find(
+          v => v.visitId && (mediaManifest[v.visitId]?.length ?? 0) > 0,
+        );
+        if (firstMediaVisit) {
+          const mediaFiles = mediaManifest[firstMediaVisit.visitId!] ?? [];
+          showVisitPanel(buildVisitPanelContent(firstMediaVisit, mediaFiles), undefined, { scrollToVisit: false });
+        } else {
+          hideVisitPanel();
+        }
+        scrollToMapSection();
+      }
     },
     initialSelectedDayKey,
   );
@@ -332,9 +360,8 @@ async function main(): Promise<void> {
     const dayIndex = dayLayers.findIndex(({ day }) => day.dateKey === selectedDay!.dateKey);
     const nextDay = dayIndex >= 0 ? dayLayers[dayIndex + 1]?.day ?? null : null;
     if (!nextDay) return;
-    sidebar.selectDayByKey(nextDay.dateKey);
+    sidebar.selectDayByKey(nextDay.dateKey); // triggers onDaySelected which handles visit panel + scroll
     closeSidebarDrawer();
-    hideVisitPanel({ scrollToMap: isPhoneLayout() });
   });
 
   // 5b. Sidebar diary editors (must run after buildSidebar has created the day-list DOM)
