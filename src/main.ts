@@ -14,6 +14,11 @@ import {
   getVisitId,
   applyStoredTimelineEdits,
   consumePendingSelectedDay,
+  getPendingDeletionChangeEventName,
+  getPendingPathPointDeletionIds,
+  getPendingVisitDeletionIds,
+  isPathPointPendingDeletion,
+  isVisitPendingDeletion,
   buildEditPanelHtml,
   buildNewVisitPanelHtml,
   buildNewVisitDisabledPanelHtml,
@@ -98,6 +103,7 @@ async function main(): Promise<void> {
   const timeline = parseTimeline(timelineSource, metadataMap);
   const dayOffsets = buildDateOffsetMap(rawTimeline);
   const initialSelectedDayKey = isEditMode() ? consumePendingSelectedDay() : null;
+  const pendingDeletionChangeEventName = getPendingDeletionChangeEventName();
 
   // 2. Init map
   const map = initMap('map');
@@ -134,8 +140,15 @@ async function main(): Promise<void> {
 
   let activeMarker: L.CircleMarker | null = null;
   let selectedDay: import('./types').ParsedDay | null = null;
+  let activeEditPanel:
+    | { kind: 'visit'; visit: ParsedVisit; data: EditPopupData; marker: L.CircleMarker }
+    | { kind: 'path-point'; data: PathPointEditData; marker: L.CircleMarker }
+    | { kind: 'new-visit'; data: NewVisitEditData }
+    | { kind: 'new-visit-disabled' }
+    | { kind: 'readonly' }
+    | null = null;
   let mobileNotesExpanded = false;
-  let mobileNotesPreferenceExpanded = false;
+  let mobileNotesPreferenceExpanded = true;
   let mobileButtonStateFrame = 0;
   // Tracks whether the "Back to map" button is currently showing, so we can
   // debounce the revert to "Next day / Show all" and avoid scroll-inertia stutter.
@@ -302,11 +315,59 @@ async function main(): Promise<void> {
     visitPanel.classList.remove('visit-panel--open');
     visitPanel.setAttribute('aria-hidden', 'true');
     visitPanelContent.innerHTML = '';
+    activeEditPanel = null;
     invalidateMapSize();
     updateMobileActionButtons(true);
     if (options?.scrollToMap) {
       scrollToMapSection();
     }
+  }
+
+  function refreshActiveEditPanel(): void {
+    if (!activeEditPanel || !visitPanel.classList.contains('visit-panel--open')) return;
+
+    if (activeEditPanel.kind === 'visit') {
+      activeEditPanel.data.pendingDeletion = isVisitPendingDeletion(activeEditPanel.data.visitId);
+      showVisitPanel(buildEditPanelHtml(activeEditPanel.visit, activeEditPanel.data), activeEditPanel.marker, { scrollToVisit: false });
+      wireEditPanelEvents(visitPanelContent, activeEditPanel.data);
+      return;
+    }
+
+    if (activeEditPanel.kind === 'path-point') {
+      activeEditPanel.data.pendingDeletion = isPathPointPendingDeletion(activeEditPanel.data.pointId);
+      showVisitPanel(buildPathPointEditPanelHtml(activeEditPanel.data), activeEditPanel.marker, { scrollToVisit: false });
+      wirePathPointEditPanelEvents(visitPanelContent, activeEditPanel.data);
+      return;
+    }
+
+    if (activeEditPanel.kind === 'new-visit') {
+      showVisitPanel(buildNewVisitPanelHtml(activeEditPanel.data), undefined, { scrollToVisit: false });
+      wireNewVisitPanelEvents(visitPanelContent, activeEditPanel.data);
+      return;
+    }
+
+    if (activeEditPanel.kind === 'new-visit-disabled') {
+      showVisitPanel(buildNewVisitDisabledPanelHtml(), undefined, { scrollToVisit: false });
+      return;
+    }
+
+    if (activeEditPanel.kind === 'readonly') {
+      return;
+    }
+  }
+
+  function syncPendingDeletionStyles(): void {
+    const pendingVisitIds = getPendingVisitDeletionIds();
+    const pendingPathPointIds = getPendingPathPointDeletionIds();
+    for (const dayLayer of dayLayers) {
+      for (const [visitId, marker] of dayLayer.visitMarkersByStorageKey) {
+        marker.getElement()?.classList.toggle('visit-marker--pending-delete', pendingVisitIds.has(visitId));
+      }
+      for (const [pointId, marker] of dayLayer.pathPointMarkers) {
+        marker.getElement()?.classList.toggle('edit-path-point-marker--pending-delete', pendingPathPointIds.has(pointId));
+      }
+    }
+    refreshActiveEditPanel();
   }
 
   document.getElementById('visit-panel-close')!.addEventListener('click', () => hideVisitPanel({ scrollToMap: isPhoneLayout() }));
@@ -322,6 +383,7 @@ async function main(): Promise<void> {
     if (isEditMode()) {
       if (!selectedDay) {
         showVisitPanel(buildNewVisitDisabledPanelHtml());
+        activeEditPanel = { kind: 'new-visit-disabled' };
         return;
       }
 
@@ -334,6 +396,7 @@ async function main(): Promise<void> {
         existingVisitIds: timeline.days.flatMap((day) => day.visits.map((visit) => getVisitId(visit))),
       };
       showVisitPanel(buildNewVisitPanelHtml(data));
+      activeEditPanel = { kind: 'new-visit', data };
       wireNewVisitPanelEvents(visitPanelContent, data);
       return;
     }
@@ -350,11 +413,19 @@ async function main(): Promise<void> {
     suppressNextMapClick = true;
     if (isEditMode()) {
       const visitId = getVisitId(visit);
-      const data: EditPopupData = { visitId, dateKey, dayLabel, meta };
+      const data: EditPopupData = {
+        visitId,
+        dateKey,
+        dayLabel,
+        pendingDeletion: isVisitPendingDeletion(visitId),
+        meta,
+      };
       showVisitPanel(buildEditPanelHtml(visit, data), marker);
+      activeEditPanel = { kind: 'visit', visit, data, marker };
       wireEditPanelEvents(visitPanelContent, data);
     } else {
       showVisitPanel(buildVisitPanelContent(visit, mediaFiles), marker);
+      activeEditPanel = { kind: 'readonly' };
     }
   };
 
@@ -369,8 +440,10 @@ async function main(): Promise<void> {
       pointTime: point.time,
       lat: point.lat,
       lng: point.lng,
+      pendingDeletion: isPathPointPendingDeletion(point.sourceId),
     };
     showVisitPanel(buildPathPointEditPanelHtml(data), marker);
+    activeEditPanel = { kind: 'path-point', data, marker };
     wirePathPointEditPanelEvents(visitPanelContent, data);
   };
 
@@ -381,7 +454,13 @@ async function main(): Promise<void> {
     onVisitClick,
     isEditMode() ? onPathPointClick : undefined,
     isEditMode(),
+    getPendingVisitDeletionIds(),
+    getPendingPathPointDeletionIds(),
   );
+
+  if (isEditMode()) {
+    window.addEventListener(pendingDeletionChangeEventName, syncPendingDeletionStyles);
+  }
 
   // 3b. Edit mode — export bar only (popup interception replaced by visit panel)
   if (isEditMode()) {

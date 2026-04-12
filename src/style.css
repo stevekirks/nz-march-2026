@@ -736,15 +736,96 @@ body {
   right: 0;
   z-index: 10000;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 10px;
-  padding: 8px 16px;
+  padding: 10px 16px 12px;
   background: #c47f00;
   border-top: 2px solid #f5a623;
   font-family: var(--font);
   font-size: 0.82rem;
   color: #fff;
   box-shadow: 0 -2px 12px rgba(0,0,0,0.5);
+}
+
+.edit-bar-primary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.edit-bar-secondary {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  width: 100%;
+}
+
+.edit-bar-pending-meta {
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.edit-bar-pending-meta strong {
+  font-size: 0.79rem;
+}
+
+.edit-bar-pending-meta span {
+  font-size: 0.73rem;
+  color: rgba(255,255,255,0.84);
+}
+
+.edit-bar-queue {
+  flex: 1;
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.edit-bar-queue-group {
+  min-width: 220px;
+  max-width: 320px;
+}
+
+.edit-bar-queue-group strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.73rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.76);
+}
+
+.edit-bar-queue-group ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.edit-bar-queue-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 8px;
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 5px;
+  background: rgba(0,0,0,0.16);
+}
+
+.edit-bar-queue-label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.edit-bar-queue-detail {
+  font-size: 0.70rem;
+  color: rgba(255,255,255,0.72);
 }
 
 .edit-mode-badge {
@@ -774,6 +855,24 @@ body {
 
 .edit-bar-btn:hover {
   background: rgba(0,0,0,0.45);
+}
+
+.edit-bar-btn--danger {
+  background: rgba(117, 13, 13, 0.34);
+  border-color: rgba(255,255,255,0.26);
+}
+
+.edit-bar-btn--danger:hover:not(:disabled) {
+  background: rgba(117, 13, 13, 0.56);
+}
+
+.edit-bar-btn--ghost {
+  background: rgba(255,255,255,0.14);
+}
+
+.edit-bar-btn:disabled {
+  opacity: 0.52;
+  cursor: default;
 }
 
 .edit-bar-hint {
@@ -842,8 +941,29 @@ body {
 .popup-edit-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 2px;
+}
+
+.popup-edit-help {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+}
+
+.popup-edit-pending-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 6px;
+  padding: 2px 8px;
+  font-size: 0.69rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #ffd7b5;
+  background: rgba(168, 64, 10, 0.22);
+  border: 1px solid rgba(255, 177, 122, 0.42);
+  border-radius: 999px;
 }
 
 .popup-edit-save {
@@ -983,6 +1103,11 @@ body {
   filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.35));
 }
 
+.edit-path-point-marker--pending-delete {
+  filter: drop-shadow(0 0 4px rgba(255, 162, 95, 0.85));
+  opacity: 0.9;
+}
+
 .visit-marker {
   transition: stroke 0.12s ease, stroke-width 0.12s ease, fill 0.12s ease, fill-opacity 0.12s ease, filter 0.12s ease;
 }
@@ -993,6 +1118,14 @@ body {
   fill: hsl(46, 92%, 64%);
   fill-opacity: 1;
   filter: none;
+}
+
+.visit-marker--pending-delete {
+  stroke: hsl(20, 78%, 50%);
+  stroke-width: 4px;
+  fill: hsl(15, 92%, 66%);
+  fill-opacity: 0.92;
+  filter: drop-shadow(0 0 5px rgba(255, 155, 105, 0.6));
 }
 
 /* ── Active visit marker pulse ────────────────────────────────────────────── */
@@ -1074,6 +1207,14 @@ body {
   #visit-panel {
     width: min(320px, 36vw);
   }
+
+  .edit-bar-secondary {
+    flex-direction: column;
+  }
+
+  .edit-bar-queue {
+    width: 100%;
+  }
 }
 
 @media (max-width: 767px) {
@@ -1117,6 +1258,40 @@ body {
 
   #mobile-backdrop {
     display: block;
+  }
+
+  #edit-export-bar {
+    gap: 8px;
+    padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .edit-bar-primary {
+    gap: 8px;
+  }
+
+  .edit-bar-btn {
+    padding: 6px 12px;
+  }
+
+  .edit-bar-hint {
+    width: 100%;
+    margin-left: 0;
+    white-space: normal;
+  }
+
+  .edit-bar-pending-meta {
+    min-width: 0;
+  }
+
+  .edit-bar-queue {
+    flex-direction: column;
+    gap: 8px;
+    overflow-x: visible;
+  }
+
+  .edit-bar-queue-group {
+    min-width: 0;
+    max-width: none;
   }
 
   #app.app--sidebar-open #mobile-backdrop {

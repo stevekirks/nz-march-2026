@@ -22,8 +22,11 @@ const DIARY_KEY  = 'nz2026_diary_days';   // Record<dateKey, string>
 const IDS_KEY    = 'nz2026_visit_ids';    // Record<startTimeKey, customSlug>
 const DELETED_VISITS_KEY = 'nz2026_deleted_visits';
 const DELETED_PATH_POINTS_KEY = 'nz2026_deleted_path_points';
+const PENDING_DELETED_VISITS_KEY = 'nz2026_pending_deleted_visits';
+const PENDING_DELETED_PATH_POINTS_KEY = 'nz2026_pending_deleted_path_points';
 const CREATED_VISITS_KEY = 'nz2026_created_visits';
 const PENDING_SELECTED_DAY_KEY = 'nz2026_pending_selected_day';
+const PENDING_DELETIONS_CHANGED_EVENT = 'nz2026:pending-deletions-changed';
 
 function readJson<T extends object>(key: string): T {
   try {
@@ -118,6 +121,58 @@ export function setPathPointDeleted(pointId: string, deleted: boolean): void {
 
 export function isPathPointDeleted(pointId: string): boolean {
   return readSet(DELETED_PATH_POINTS_KEY).has(pointId);
+}
+
+function emitPendingDeletionChange(): void {
+  window.dispatchEvent(new CustomEvent(PENDING_DELETIONS_CHANGED_EVENT));
+}
+
+export function getPendingDeletionChangeEventName(): string {
+  return PENDING_DELETIONS_CHANGED_EVENT;
+}
+
+export function getPendingVisitDeletionIds(): Set<string> {
+  return readSet(PENDING_DELETED_VISITS_KEY);
+}
+
+export function isVisitPendingDeletion(visitId: string): boolean {
+  return getPendingVisitDeletionIds().has(visitId);
+}
+
+export function setVisitPendingDeletion(visitId: string, pending: boolean): void {
+  const pendingVisits = getPendingVisitDeletionIds();
+  if (pending) pendingVisits.add(visitId);
+  else pendingVisits.delete(visitId);
+  writeSet(PENDING_DELETED_VISITS_KEY, pendingVisits);
+  emitPendingDeletionChange();
+}
+
+export function getPendingPathPointDeletionIds(): Set<string> {
+  return readSet(PENDING_DELETED_PATH_POINTS_KEY);
+}
+
+export function isPathPointPendingDeletion(pointId: string): boolean {
+  return getPendingPathPointDeletionIds().has(pointId);
+}
+
+export function setPathPointPendingDeletion(pointId: string, pending: boolean): void {
+  const pendingPointIds = getPendingPathPointDeletionIds();
+  if (pending) pendingPointIds.add(pointId);
+  else pendingPointIds.delete(pointId);
+  writeSet(PENDING_DELETED_PATH_POINTS_KEY, pendingPointIds);
+  emitPendingDeletionChange();
+}
+
+export function clearPendingDeletionQueue(): void {
+  writeSet(PENDING_DELETED_VISITS_KEY, new Set());
+  writeSet(PENDING_DELETED_PATH_POINTS_KEY, new Set());
+  emitPendingDeletionChange();
+}
+
+export function getPendingDeletionCounts(): { visits: number; pathPoints: number; total: number } {
+  const visits = getPendingVisitDeletionIds().size;
+  const pathPoints = getPendingPathPointDeletionIds().size;
+  return { visits, pathPoints, total: visits + pathPoints };
 }
 
 function getStoredCreatedVisits(): Record<string, RawVisitSegment> {
@@ -258,6 +313,7 @@ export interface EditPopupData {
   dateKey: string;
   /** Human-readable day label, e.g. "Wed 15 Mar". */
   dayLabel: string;
+  pendingDeletion: boolean;
   meta?: DayMetadata;
 }
 
@@ -269,6 +325,7 @@ export interface PathPointEditData {
   pointTime: Date;
   lat: number;
   lng: number;
+  pendingDeletion: boolean;
 }
 
 export interface NewVisitEditData {
@@ -335,6 +392,17 @@ function formatIsoWithOffset(value: Date, offsetMinutes: number): string {
   const offsetHour = pad2(Math.floor(absOffset / 60));
   const offsetMinute = pad2(absOffset % 60);
   return `${year}-${month}-${day}T${hour}:${minute}:${second}.${ms}${sign}${offsetHour}:${offsetMinute}`;
+}
+
+function semanticTypeLabel(rawType: string | undefined): string {
+  const nextType = rawType ?? 'UNKNOWN';
+  return nextType === 'UNKNOWN' || nextType === 'UNKNOWN_TYPE' || nextType === ''
+    ? 'Stop'
+    : nextType.charAt(0).toUpperCase() + nextType.slice(1).toLowerCase().replace(/_/g, ' ');
+}
+
+function formatPendingTime(value: Date): string {
+  return value.toLocaleString('en-NZ', { dateStyle: 'short', timeStyle: 'short' });
 }
 
 function buildCreatedVisitSegment(
@@ -450,21 +518,26 @@ export function buildEditPanelHtml(visit: ParsedVisit, data: EditPopupData): str
     ? `${Math.floor(durationMin / 60)}h ${durationMin % 60}m`
     : `${durationMin}m`;
 
-  const rawType = visit.semanticType ?? 'UNKNOWN';
-  const typeLabel =
-    rawType === 'UNKNOWN' || rawType === 'UNKNOWN_TYPE' || rawType === ''
-      ? 'Stop'
-      : rawType.charAt(0).toUpperCase() + rawType.slice(1).toLowerCase().replace(/_/g, ' ');
+  const typeLabel = semanticTypeLabel(visit.semanticType);
 
   const coord = `${visit.location.lat.toFixed(7)}°, ${visit.location.lng.toFixed(7)}°`;
 
-  // ── Pre-fill the heading with stored name, falling back to derived typeLabel ──
-  const storedLabel = getStoredLabel(data.visitId);
-  const headingValue = storedLabel || typeLabel;
-  // Show the custom slug if one has been generated, otherwise the raw startTime key
-  const displayVisitId = getStoredVisitIdSlug(data.visitId) || data.visitId;
+  // ── Pre-fill the heading with stored name, falling back to the current visit name ──
+  const storedLabel = getStoredLabel(data.visitId).trim();
+  const existingVisitName = visit.visitName?.trim() ?? '';
+  const headingValue = storedLabel || existingVisitName || typeLabel;
+  // Show the current exported visit ID first, then the parsed visit ID, then the storage key.
+  const displayVisitId = getStoredVisitIdSlug(data.visitId) || visit.visitId || data.visitId;
+  const deletionBadge = data.pendingDeletion
+    ? '<span class="popup-edit-pending-badge">Pending deletion</span>'
+    : '';
+  const deletionHelp = data.pendingDeletion
+    ? 'This visit will stay visible until you apply deletions from the edit bar.'
+    : 'Mark this visit now and remove it later from the edit bar.';
+  const deleteLabel = data.pendingDeletion ? 'Unmark deletion' : 'Mark for deletion';
 
   return `<div class="popup-visit">
+  ${deletionBadge}
   <input
     id="edit-label-input"
     class="popup-edit-heading-input"
@@ -482,9 +555,10 @@ export function buildEditPanelHtml(visit: ParsedVisit, data: EditPopupData): str
       <span class="popup-edit-id-label">Visit ID (for JSON export):</span>
       <code class="popup-edit-id">${escHtml(displayVisitId)}</code>
     </div>
+    <span class="popup-edit-help">${escHtml(deletionHelp)}</span>
     <div class="popup-edit-actions">
       <button id="edit-save-btn" class="popup-edit-save">Save name</button>
-      <button id="edit-delete-visit-btn" class="popup-edit-delete">Delete visit</button>
+      <button id="edit-delete-visit-btn" class="popup-edit-delete">${escHtml(deleteLabel)}</button>
       <span id="edit-saved-confirm" class="popup-edit-saved-confirm" aria-live="polite"></span>
     </div>
   </div>
@@ -500,8 +574,16 @@ function activityLabel(rawType: string): string {
 export function buildPathPointEditPanelHtml(data: PathPointEditData): string {
   const timeLabel = data.pointTime.toLocaleString('en-NZ', { timeStyle: 'short', dateStyle: 'short' });
   const coord = `${data.lat.toFixed(7)}°, ${data.lng.toFixed(7)}°`;
+  const deletionBadge = data.pendingDeletion
+    ? '<span class="popup-edit-pending-badge">Pending deletion</span>'
+    : '';
+  const deletionHelp = data.pendingDeletion
+    ? 'This vertex will stay visible until you apply deletions from the edit bar.'
+    : 'Mark this vertex now and remove it later from the edit bar.';
+  const deleteLabel = data.pendingDeletion ? 'Unmark deletion' : 'Mark for deletion';
 
   return `<div class="popup-visit">
+  ${deletionBadge}
   <strong>Path vertex</strong><br/>
   <span class="popup-coord">${escHtml(coord)}</span><br/>
   <span>${escHtml(timeLabel)}</span><br/>
@@ -512,8 +594,9 @@ export function buildPathPointEditPanelHtml(data: PathPointEditData): string {
       <span class="popup-edit-id-label">Point source ID:</span>
       <code class="popup-edit-id">${escHtml(data.pointId)}</code>
     </div>
+    <span class="popup-edit-help">${escHtml(deletionHelp)}</span>
     <div class="popup-edit-actions">
-      <button id="edit-delete-point-btn" class="popup-edit-delete">Delete vertex</button>
+      <button id="edit-delete-point-btn" class="popup-edit-delete">${escHtml(deleteLabel)}</button>
       <span id="edit-point-confirm" class="popup-edit-saved-confirm" aria-live="polite"></span>
     </div>
   </div>
@@ -550,18 +633,16 @@ export function wireEditPanelEvents(popupEl: HTMLElement, data: EditPopupData): 
   });
 
   deleteBtn?.addEventListener('click', () => {
-    const confirmed = window.confirm('Delete this visit from the exported timeline?');
-    if (!confirmed) return;
-
-    setPendingSelectedDay(data.dateKey);
-    setVisitDeleted(data.visitId, true);
-    deleteStoredCreatedVisit(data.visitId);
-    deleteStoredLabel(data.visitId);
-    deleteStoredVisitIdSlug(data.visitId);
-    confirmEl.textContent = 'Deleting…';
-    saveBtn.disabled = true;
-    deleteBtn.disabled = true;
-    location.reload();
+    const nextPending = !isVisitPendingDeletion(data.visitId);
+    setVisitPendingDeletion(data.visitId, nextPending);
+    data.pendingDeletion = nextPending;
+    deleteBtn.textContent = nextPending ? 'Unmark deletion' : 'Mark for deletion';
+    confirmEl.textContent = nextPending ? 'Queued for deletion' : 'Removed from queue';
+    setTimeout(() => {
+      if (confirmEl.textContent === 'Queued for deletion' || confirmEl.textContent === 'Removed from queue') {
+        confirmEl.textContent = '';
+      }
+    }, 2000);
   });
 }
 
@@ -619,27 +700,151 @@ export function wirePathPointEditPanelEvents(popupEl: HTMLElement, data: PathPoi
   if (!deleteBtn || !confirmEl) return;
 
   deleteBtn.addEventListener('click', () => {
-    const confirmed = window.confirm('Delete this path vertex from the exported timeline?');
-    if (!confirmed) return;
-
-    setPendingSelectedDay(data.dateKey);
-    setPathPointDeleted(data.pointId, true);
-    confirmEl.textContent = 'Deleting…';
-    deleteBtn.disabled = true;
-    location.reload();
+    const nextPending = !isPathPointPendingDeletion(data.pointId);
+    setPathPointPendingDeletion(data.pointId, nextPending);
+    data.pendingDeletion = nextPending;
+    deleteBtn.textContent = nextPending ? 'Unmark deletion' : 'Mark for deletion';
+    confirmEl.textContent = nextPending ? 'Queued for deletion' : 'Removed from queue';
+    setTimeout(() => {
+      if (confirmEl.textContent === 'Queued for deletion' || confirmEl.textContent === 'Removed from queue') {
+        confirmEl.textContent = '';
+      }
+    }, 2000);
   });
 }
 
 // ─── Export bar ───────────────────────────────────────────────────────────────
 
+interface PendingVisitSummaryItem {
+  visitId: string;
+  label: string;
+  detail: string;
+}
+
+interface PendingPathPointSummaryItem {
+  pointId: string;
+  label: string;
+  detail: string;
+}
+
+function buildPendingVisitSummary(days: ParsedDay[]): PendingVisitSummaryItem[] {
+  const pendingIds = getPendingVisitDeletionIds();
+  const items: PendingVisitSummaryItem[] = [];
+  for (const day of days) {
+    for (const visit of day.visits) {
+      const visitId = getVisitId(visit);
+      if (!pendingIds.has(visitId)) continue;
+      const storedLabel = getStoredLabel(visitId).trim();
+      const label = storedLabel || visit.visitName?.trim() || semanticTypeLabel(visit.semanticType);
+      const detail = `${day.label} · ${formatPendingTime(visit.startTime)}`;
+      items.push({ visitId, label, detail });
+    }
+  }
+  return items.sort((a, b) => a.detail.localeCompare(b.detail));
+}
+
+function buildPendingPathPointSummary(days: ParsedDay[]): PendingPathPointSummaryItem[] {
+  const pendingIds = getPendingPathPointDeletionIds();
+  const items: PendingPathPointSummaryItem[] = [];
+  for (const day of days) {
+    for (const seg of day.segments) {
+      for (const point of seg.points) {
+        if (!point.sourceId || !pendingIds.has(point.sourceId)) continue;
+        items.push({
+          pointId: point.sourceId,
+          label: `${day.label} · ${formatPendingTime(point.time)}`,
+          detail: formatCoord(point.lat, point.lng),
+        });
+      }
+    }
+  }
+  return items.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function applyPendingDeletionQueue(selectedDayKey: string | null): void {
+  const pendingVisits = getPendingVisitDeletionIds();
+  const pendingPathPoints = getPendingPathPointDeletionIds();
+  if (pendingVisits.size === 0 && pendingPathPoints.size === 0) {
+    return;
+  }
+
+  if (selectedDayKey) {
+    setPendingSelectedDay(selectedDayKey);
+  }
+
+  for (const visitId of pendingVisits) {
+    setVisitDeleted(visitId, true);
+    deleteStoredCreatedVisit(visitId);
+    deleteStoredLabel(visitId);
+    deleteStoredVisitIdSlug(visitId);
+  }
+
+  for (const pointId of pendingPathPoints) {
+    setPathPointDeleted(pointId, true);
+  }
+
+  writeSet(PENDING_DELETED_VISITS_KEY, new Set());
+  writeSet(PENDING_DELETED_PATH_POINTS_KEY, new Set());
+  location.reload();
+}
+
+function renderPendingDeletionSummary(container: HTMLElement, days: ParsedDay[]): void {
+  const counts = getPendingDeletionCounts();
+  const countEl = container.querySelector<HTMLElement>('[data-role="pending-count"]');
+  const hintEl = container.querySelector<HTMLElement>('[data-role="pending-hint"]');
+  const queueEl = container.querySelector<HTMLElement>('[data-role="pending-queue"]');
+  const applyBtn = container.querySelector<HTMLButtonElement>('#edit-apply-deletions-btn');
+  const clearBtn = container.querySelector<HTMLButtonElement>('#edit-clear-deletions-btn');
+  if (!countEl || !hintEl || !queueEl || !applyBtn || !clearBtn) return;
+
+  countEl.textContent = counts.total === 0
+    ? 'No pending deletions'
+    : `${counts.total} pending deletion${counts.total === 1 ? '' : 's'}`;
+  hintEl.textContent = counts.total === 0
+    ? 'Marked visits and vertices stay visible until you apply them.'
+    : `Review ${counts.visits} visit${counts.visits === 1 ? '' : 's'} and ${counts.pathPoints} vertex${counts.pathPoints === 1 ? '' : 'es'} before applying.`;
+  applyBtn.disabled = counts.total === 0;
+  clearBtn.disabled = counts.total === 0;
+
+  const visitItems = buildPendingVisitSummary(days);
+  const pointItems = buildPendingPathPointSummary(days);
+  const fragments: string[] = [];
+
+  if (visitItems.length > 0) {
+    fragments.push(`<div class="edit-bar-queue-group"><strong>Visits</strong><ul>${visitItems.map((item) => (
+      `<li class="edit-bar-queue-item"><span class="edit-bar-queue-label">${escHtml(item.label)}</span><span class="edit-bar-queue-detail">${escHtml(item.detail)}</span></li>`
+    )).join('')}</ul></div>`);
+  }
+
+  if (pointItems.length > 0) {
+    fragments.push(`<div class="edit-bar-queue-group"><strong>Vertices</strong><ul>${pointItems.map((item) => (
+      `<li class="edit-bar-queue-item"><span class="edit-bar-queue-label">${escHtml(item.label)}</span><span class="edit-bar-queue-detail">${escHtml(item.detail)}</span></li>`
+    )).join('')}</ul></div>`);
+  }
+
+  queueEl.innerHTML = fragments.join('');
+  queueEl.hidden = fragments.length === 0;
+}
+
 export function addExportBar(rawTimeline: RawTimeline, days: ParsedDay[]): void {
   const bar = document.createElement('div');
   bar.id = 'edit-export-bar';
   bar.innerHTML = `
-    <span class="edit-mode-badge">EDIT MODE</span>
-    <button id="edit-export-diary-btn" class="edit-bar-btn">Export diary .txt</button>
-    <button id="edit-export-json-btn" class="edit-bar-btn">Export timeline .json</button>
-    <span class="edit-bar-hint">Edits are auto-saved to browser storage</span>
+    <div class="edit-bar-primary">
+      <span class="edit-mode-badge">EDIT MODE</span>
+      <button id="edit-export-diary-btn" class="edit-bar-btn">Export diary .txt</button>
+      <button id="edit-export-json-btn" class="edit-bar-btn">Export timeline .json</button>
+      <button id="edit-apply-deletions-btn" class="edit-bar-btn edit-bar-btn--danger">Apply deletions</button>
+      <button id="edit-clear-deletions-btn" class="edit-bar-btn edit-bar-btn--ghost">Clear pending</button>
+      <span class="edit-bar-hint">Edits are auto-saved to browser storage</span>
+    </div>
+    <div class="edit-bar-secondary">
+      <div class="edit-bar-pending-meta">
+        <strong data-role="pending-count">No pending deletions</strong>
+        <span data-role="pending-hint">Marked visits and vertices stay visible until you apply them.</span>
+      </div>
+      <div class="edit-bar-queue" data-role="pending-queue" hidden></div>
+    </div>
   `;
   document.body.appendChild(bar);
 
@@ -652,6 +857,18 @@ export function addExportBar(rawTimeline: RawTimeline, days: ParsedDay[]): void 
     .addEventListener('click', () => exportDiary(days));
   bar.querySelector('#edit-export-json-btn')!
     .addEventListener('click', () => exportJson(rawTimeline));
+  bar.querySelector<HTMLButtonElement>('#edit-apply-deletions-btn')!
+    .addEventListener('click', () => applyPendingDeletionQueue(document.querySelector<HTMLElement>('#day-list .day-item--active')?.dataset['dateKey'] ?? null));
+  bar.querySelector<HTMLButtonElement>('#edit-clear-deletions-btn')!
+    .addEventListener('click', () => clearPendingDeletionQueue());
+
+  const render = (): void => {
+    renderPendingDeletionSummary(bar, days);
+    if (dayList) dayList.style.paddingBottom = `${bar.offsetHeight || 52}px`;
+  };
+
+  render();
+  window.addEventListener(PENDING_DELETIONS_CHANGED_EVENT, render);
 }
 
 // ─── Export functions ─────────────────────────────────────────────────────────

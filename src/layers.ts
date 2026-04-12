@@ -203,6 +203,8 @@ export type PathPointClickHandler = (
 const VISIT_FILL   = 'hsl(45, 90%, 62%)';
 const VISIT_STROKE = 'hsl(38, 70%, 38%)';
 const VISIT_MEDIA_CLASS = 'visit-marker--has-media';
+const VISIT_PENDING_CLASS = 'visit-marker--pending-delete';
+const PATH_POINT_PENDING_CLASS = 'edit-path-point-marker--pending-delete';
 
 function buildVisitMarker(
   visit: ParsedVisit,
@@ -211,6 +213,7 @@ function buildVisitMarker(
   mediaFiles: string[],
   onVisitClick: VisitClickHandler,
   editMode: boolean,
+  pendingDeletion: boolean,
   meta?: DayMetadata,
 ): L.CircleMarker {
   const hasMedia = mediaFiles.length > 0;
@@ -225,7 +228,11 @@ function buildVisitMarker(
     weight: 2,
     fillColor: VISIT_FILL,
     fillOpacity: 0.90,
-    className: hasMedia ? `visit-marker ${VISIT_MEDIA_CLASS}` : 'visit-marker',
+    className: [
+      'visit-marker',
+      hasMedia ? VISIT_MEDIA_CLASS : '',
+      pendingDeletion ? VISIT_PENDING_CLASS : '',
+    ].filter(Boolean).join(' '),
     pane: hasMedia ? VISIT_MEDIA_PANE : VISIT_PANE,
   });
   marker.on('click', (e: L.LeafletMouseEvent) => {
@@ -242,6 +249,7 @@ function buildPathPointMarker(
   dateKey: string,
   dayLabel: string,
   onPathPointClick: PathPointClickHandler,
+  pendingDeletion: boolean,
 ): L.CircleMarker {
   const marker = L.circleMarker([point.lat, point.lng], {
     radius: 4,
@@ -249,7 +257,9 @@ function buildPathPointMarker(
     weight: 2,
     fillColor: 'hsl(14, 100%, 73%)',
     fillOpacity: 0.95,
-    className: 'edit-path-point-marker',
+    className: pendingDeletion
+      ? `edit-path-point-marker ${PATH_POINT_PENDING_CLASS}`
+      : 'edit-path-point-marker',
     pane: PATH_POINT_PANE,
   });
   marker.on('click', (e: L.LeafletMouseEvent) => {
@@ -264,6 +274,8 @@ export interface DayLayer {
   group: L.LayerGroup;
   day: ParsedDay;
   visitMarkers: Map<string, L.CircleMarker>;
+  visitMarkersByStorageKey: Map<string, L.CircleMarker>;
+  pathPointMarkers: Map<string, L.CircleMarker>;
 }
 
 export function buildDayLayers(
@@ -272,10 +284,14 @@ export function buildDayLayers(
   onVisitClick?: VisitClickHandler,
   onPathPointClick?: PathPointClickHandler,
   editMode = false,
+  pendingVisitIds: Set<string> = new Set(),
+  pendingPathPointIds: Set<string> = new Set(),
 ): DayLayer[] {
   return days.map(day => {
     const group = L.layerGroup();
     const visitMarkers = new Map<string, L.CircleMarker>();
+    const visitMarkersByStorageKey = new Map<string, L.CircleMarker>();
+    const pathPointMarkers = new Map<string, L.CircleMarker>();
 
     // GPS track segments
     for (const seg of day.segments) {
@@ -286,9 +302,20 @@ export function buildDayLayers(
     for (const visit of day.visits) {
       const mediaFiles = (visit.visitId ? (mediaManifest[visit.visitId] ?? []) : []);
       if (onVisitClick) {
-        const m = buildVisitMarker(visit, day.dateKey, day.label, mediaFiles, onVisitClick, editMode, day.metadata);
+        const visitStorageKey = visit.startTime.toISOString();
+        const m = buildVisitMarker(
+          visit,
+          day.dateKey,
+          day.label,
+          mediaFiles,
+          onVisitClick,
+          editMode,
+          pendingVisitIds.has(visitStorageKey),
+          day.metadata,
+        );
         m.addTo(group);
         if (visit.visitId) visitMarkers.set(visit.visitId, m);
+        visitMarkersByStorageKey.set(visitStorageKey, m);
       }
     }
 
@@ -296,12 +323,20 @@ export function buildDayLayers(
       for (const seg of day.segments) {
         for (const point of seg.points) {
           if (!point.sourceId) continue;
-          buildPathPointMarker(point, day.dateKey, day.label, onPathPointClick).addTo(group);
+          const marker = buildPathPointMarker(
+            point,
+            day.dateKey,
+            day.label,
+            onPathPointClick,
+            pendingPathPointIds.has(point.sourceId),
+          );
+          marker.addTo(group);
+          pathPointMarkers.set(point.sourceId, marker);
         }
       }
     }
 
-    return { group, day, visitMarkers };
+    return { group, day, visitMarkers, visitMarkersByStorageKey, pathPointMarkers };
   });
 }
 
