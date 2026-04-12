@@ -171,15 +171,17 @@ body {
 #mobile-back-to-map {
   display: none;
   flex-shrink: 0;
-  min-height: 38px;
-  padding: 0 12px;
-  font-size: 0.76rem;
+  min-height: 44px;
+  padding: 0 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
   font-family: var(--font);
   color: var(--text);
   background: var(--bg-hover);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 #mobile-next-day:disabled {
@@ -1237,6 +1239,8 @@ body {
   #mobile-next-day,
   #mobile-show-all,
   #mobile-back-to-map {
-    padding: 0 10px;
+    min-height: 48px;
+    padding: 0 14px;
+    font-size: 0.9rem;
   }
 }
