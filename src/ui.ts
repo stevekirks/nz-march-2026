@@ -3,6 +3,11 @@ import { computeBounds } from './layers';
 import type { DayLayer } from './layers';
 import type { LatLng, DayMetadata, ParsedDay, JournalEntry } from './types';
 
+export interface SidebarSelectionOptions {
+  fitBounds?: boolean;
+  source?: 'default' | 'next-visit';
+}
+
 export const PHONE_LAYOUT_MEDIA_QUERY = '(max-width: 767px)';
 
 export function isPhoneLayout(): boolean {
@@ -264,9 +269,9 @@ export function buildSidebar(
   dayLayers: DayLayer[],
   map: L.Map,
   onVisibilityChange: (dateKey: string, visible: boolean) => void,
-  onDaySelected?: (day: ParsedDay | null) => void,
+  onDaySelected?: (day: ParsedDay | null, options: Required<SidebarSelectionOptions>) => void,
   initialSelectedKey: string | null = null,
-): { selectDayByKey: (dateKey: string | null) => void } {
+): { selectDayByKey: (dateKey: string | null, options?: SidebarSelectionOptions) => void } {
   buildLegend();
 
   const list = document.getElementById('day-list')!;
@@ -275,7 +280,11 @@ export function buildSidebar(
   // "All days" is the default selection state
   let selectedKey: string | null = null; // null = show all
 
-  function applySelection(key: string | null): void {
+  function applySelection(key: string | null, options: SidebarSelectionOptions = {}): void {
+    const resolvedOptions: Required<SidebarSelectionOptions> = {
+      fitBounds: options.fitBounds ?? true,
+      source: options.source ?? 'default',
+    };
     selectedKey = key;
     const visibleLayers: DayLayer[] = [];
     dayLayers.forEach(dl => {
@@ -292,11 +301,11 @@ export function buildSidebar(
     btnAll.classList.toggle('btn-all--active', key === null);
     // Zoom to the visible data
     const bounds = computeBounds(visibleLayers);
-    if (bounds) map.fitBounds(bounds, { padding: [30, 30], animate: true });
+    if (bounds && resolvedOptions.fitBounds) map.fitBounds(bounds, { padding: [30, 30], animate: true });
     // Notify about the selected day (null = all days)
     if (onDaySelected) {
       const selectedDay = key !== null ? dayLayers.find(dl => dl.day.dateKey === key)?.day ?? null : null;
-      onDaySelected(selectedDay);
+      onDaySelected(selectedDay, resolvedOptions);
     }
   }
 

@@ -9,6 +9,7 @@ import { parseMetadata } from './metadataParser';
 import { initMap, buildDayLayers, computeBounds, buildVisitPanelContent } from './layers';
 import type { VisitClickHandler } from './layers';
 import { buildSidebar, buildDayDetail, showLoading, hideLoading, wireResponsiveShell, isPhoneLayout } from './ui';
+import type { SidebarSelectionOptions } from './ui';
 import {
   isEditMode,
   getVisitId,
@@ -72,6 +73,14 @@ function buildAppUrl(pathname: string): string {
   return new URL(pathname, window.location.origin + import.meta.env.BASE_URL).toString();
 }
 
+interface VisitNavigationTarget {
+  visit: ParsedVisit;
+  dateKey: string;
+  dayLabel: string;
+  marker?: L.CircleMarker;
+  mediaFiles: string[];
+}
+
 // ─── Entry point ─────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -127,6 +136,7 @@ async function main(): Promise<void> {
   const visitPanel        = document.getElementById('visit-panel')!;
   const visitPanelContent = document.getElementById('visit-panel-content')!;
   const visitPanelCollapse = document.getElementById('visit-panel-collapse')!;
+  const visitPanelNext = document.getElementById('visit-panel-next') as HTMLButtonElement;
 
   const invalidateMapSize = (): void => {
     window.requestAnimationFrame(() => {
@@ -145,7 +155,7 @@ async function main(): Promise<void> {
     | { kind: 'path-point'; data: PathPointEditData; marker: L.CircleMarker }
     | { kind: 'new-visit'; data: NewVisitEditData }
     | { kind: 'new-visit-disabled' }
-    | { kind: 'readonly' }
+    | { kind: 'readonly'; visit: ParsedVisit; dateKey: string; dayLabel: string; marker?: L.CircleMarker }
     | null = null;
   let mobileNotesExpanded = false;
   let mobileNotesPreferenceExpanded = true;
@@ -281,6 +291,71 @@ async function main(): Promise<void> {
     mapArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  function getVisitMarker(dayLayer: import('./layers').DayLayer | undefined, visit: ParsedVisit): L.CircleMarker | undefined {
+    if (!dayLayer) return undefined;
+    if (visit.visitId) {
+      const marker = dayLayer.visitMarkers.get(visit.visitId);
+      if (marker) return marker;
+    }
+    return dayLayer.visitMarkersByStorageKey.get(visit.startTime.toISOString());
+  }
+
+  function getVisitMediaFiles(visit: ParsedVisit): string[] {
+    return visit.visitId ? (mediaManifest[visit.visitId] ?? []) : [];
+  }
+
+  function getVisitNavigationTarget(visit: ParsedVisit, dateKey: string): VisitNavigationTarget | null {
+    const currentDayIndex = dayLayers.findIndex(({ day }) => day.dateKey === dateKey);
+    if (currentDayIndex === -1) return null;
+
+    for (let dayIndex = currentDayIndex; dayIndex < dayLayers.length; dayIndex += 1) {
+      const dayLayer = dayLayers[dayIndex]!;
+      const visitStartIndex = dayIndex === currentDayIndex
+        ? dayLayer.day.visits.findIndex(candidate => candidate.startTime.getTime() === visit.startTime.getTime()) + 1
+        : 0;
+      if (visitStartIndex <= 0 && dayIndex === currentDayIndex) {
+        continue;
+      }
+      const destinationVisit = dayLayer.day.visits.find((candidate, candidateIndex) => {
+        if (candidateIndex < visitStartIndex) return false;
+        return getVisitMediaFiles(candidate).length > 0;
+      });
+      if (!destinationVisit) continue;
+      return {
+        visit: destinationVisit,
+        dateKey: dayLayer.day.dateKey,
+        dayLabel: dayLayer.day.label,
+        marker: getVisitMarker(dayLayer, destinationVisit),
+        mediaFiles: getVisitMediaFiles(destinationVisit),
+      };
+    }
+
+    return null;
+  }
+
+  function updateVisitPanelNextButton(): void {
+    if (activeEditPanel?.kind !== 'readonly') {
+      visitPanelNext.hidden = true;
+      visitPanelNext.disabled = true;
+      return;
+    }
+
+    visitPanelNext.hidden = false;
+    visitPanelNext.disabled = getVisitNavigationTarget(activeEditPanel.visit, activeEditPanel.dateKey) === null;
+  }
+
+  function showReadonlyVisit(target: VisitNavigationTarget, options?: { scrollToVisit?: boolean }): void {
+    showVisitPanel(buildVisitPanelContent(target.visit, target.mediaFiles), target.marker, options);
+    activeEditPanel = {
+      kind: 'readonly',
+      visit: target.visit,
+      dateKey: target.dateKey,
+      dayLabel: target.dayLabel,
+      marker: target.marker,
+    };
+    updateVisitPanelNextButton();
+  }
+
   function showVisitPanel(html: string, marker?: L.CircleMarker, opts?: { scrollToVisit?: boolean }): void {
     // Remove animation from the previously active marker
     if (activeMarker) {
@@ -292,6 +367,7 @@ async function main(): Promise<void> {
       activeMarker.getElement()?.classList.add('visit-marker--active');
     }
     visitPanelContent.innerHTML = html;
+    visitPanelContent.scrollTop = 0;
     visitPanel.classList.add('visit-panel--open');
     visitPanel.setAttribute('aria-hidden', 'false');
     invalidateMapSize();
@@ -316,6 +392,7 @@ async function main(): Promise<void> {
     visitPanel.setAttribute('aria-hidden', 'true');
     visitPanelContent.innerHTML = '';
     activeEditPanel = null;
+    updateVisitPanelNextButton();
     invalidateMapSize();
     updateMobileActionButtons(true);
     if (options?.scrollToMap) {
@@ -352,6 +429,7 @@ async function main(): Promise<void> {
     }
 
     if (activeEditPanel.kind === 'readonly') {
+      updateVisitPanelNextButton();
       return;
     }
   }
@@ -372,6 +450,18 @@ async function main(): Promise<void> {
 
   document.getElementById('visit-panel-close')!.addEventListener('click', () => hideVisitPanel({ scrollToMap: isPhoneLayout() }));
   visitPanelCollapse.addEventListener('click', () => hideVisitPanel({ scrollToMap: true }));
+  visitPanelNext.addEventListener('click', () => {
+    if (activeEditPanel?.kind !== 'readonly') return;
+    const nextTarget = getVisitNavigationTarget(activeEditPanel.visit, activeEditPanel.dateKey);
+    if (!nextTarget) return;
+
+    const shouldChangeDay = selectedDay !== null && nextTarget.dateKey !== activeEditPanel.dateKey;
+    if (shouldChangeDay) {
+      sidebar.selectDayByKey(nextTarget.dateKey, { fitBounds: true, source: 'next-visit' });
+    }
+
+    showReadonlyVisit(nextTarget, { scrollToVisit: false });
+  });
 
   // Marker clicks set this flag so the map's click handler knows to ignore the event.
   // Necessary because Leaflet fires map 'click' even when a marker is clicked.
@@ -424,8 +514,7 @@ async function main(): Promise<void> {
       activeEditPanel = { kind: 'visit', visit, data, marker };
       wireEditPanelEvents(visitPanelContent, data);
     } else {
-      showVisitPanel(buildVisitPanelContent(visit, mediaFiles), marker);
-      activeEditPanel = { kind: 'readonly' };
+      showReadonlyVisit({ visit, mediaFiles, dateKey, dayLabel, marker });
     }
   };
 
@@ -477,10 +566,14 @@ async function main(): Promise<void> {
     dayLayers,
     map,
     (_dateKey, _visible) => { /* visibility handled by onDaySelected */ },
-    (day) => {
+    (day, options: Required<SidebarSelectionOptions>) => {
       const prevDay = selectedDay;
       selectedDay = day;
       updateMobileTopbar(day);
+      updateVisitPanelNextButton();
+      if (options.source === 'next-visit') {
+        return;
+      }
       // If a visit panel is open and the user switched to a different day,
       // show the first visit with media on the new day (if any), else hide;
       // always scroll back up to the map.
@@ -493,10 +586,14 @@ async function main(): Promise<void> {
           v => v.visitId && (mediaManifest[v.visitId]?.length ?? 0) > 0,
         );
         if (firstMediaVisit) {
-          const mediaFiles = mediaManifest[firstMediaVisit.visitId!] ?? [];
           const dayLayer = dayLayers.find(dl => dl.day.dateKey === day?.dateKey);
-          const marker = firstMediaVisit.visitId ? dayLayer?.visitMarkers.get(firstMediaVisit.visitId) : undefined;
-          showVisitPanel(buildVisitPanelContent(firstMediaVisit, mediaFiles), marker, { scrollToVisit: false });
+          showReadonlyVisit({
+            visit: firstMediaVisit,
+            dateKey: day!.dateKey,
+            dayLabel: day!.label,
+            marker: getVisitMarker(dayLayer, firstMediaVisit),
+            mediaFiles: mediaManifest[firstMediaVisit.visitId!] ?? [],
+          }, { scrollToVisit: false });
         } else {
           hideVisitPanel();
         }
