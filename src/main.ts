@@ -135,6 +135,8 @@ async function main(): Promise<void> {
   // ── Visit panel ────────────────────────────────────────────────────
   const visitPanel        = document.getElementById('visit-panel')!;
   const visitPanelContent = document.getElementById('visit-panel-content')!;
+  const visitPanelNavigation = document.getElementById('visit-panel-navigation')!;
+  const visitPanelPrevious = document.getElementById('visit-panel-previous') as HTMLButtonElement;
   const visitPanelCollapse = document.getElementById('visit-panel-collapse')!;
   const visitPanelNext = document.getElementById('visit-panel-next') as HTMLButtonElement;
 
@@ -304,44 +306,99 @@ async function main(): Promise<void> {
     return visit.visitId ? (mediaManifest[visit.visitId] ?? []) : [];
   }
 
-  function getVisitNavigationTarget(visit: ParsedVisit, dateKey: string): VisitNavigationTarget | null {
-    const currentDayIndex = dayLayers.findIndex(({ day }) => day.dateKey === dateKey);
-    if (currentDayIndex === -1) return null;
-
-    for (let dayIndex = currentDayIndex; dayIndex < dayLayers.length; dayIndex += 1) {
-      const dayLayer = dayLayers[dayIndex]!;
-      const visitStartIndex = dayIndex === currentDayIndex
-        ? dayLayer.day.visits.findIndex(candidate => candidate.startTime.getTime() === visit.startTime.getTime()) + 1
-        : 0;
-      if (visitStartIndex <= 0 && dayIndex === currentDayIndex) {
-        continue;
-      }
-      const destinationVisit = dayLayer.day.visits.find((candidate, candidateIndex) => {
-        if (candidateIndex < visitStartIndex) return false;
-        return getVisitMediaFiles(candidate).length > 0;
-      });
-      if (!destinationVisit) continue;
+  function getFirstVisitWithMediaTarget(): VisitNavigationTarget | null {
+    for (const dayLayer of dayLayers) {
+      const visit = dayLayer.day.visits.find(candidate => getVisitMediaFiles(candidate).length > 0);
+      if (!visit) continue;
+      const mediaFiles = getVisitMediaFiles(visit);
       return {
-        visit: destinationVisit,
+        visit,
         dateKey: dayLayer.day.dateKey,
         dayLabel: dayLayer.day.label,
-        marker: getVisitMarker(dayLayer, destinationVisit),
-        mediaFiles: getVisitMediaFiles(destinationVisit),
+        marker: getVisitMarker(dayLayer, visit),
+        mediaFiles,
       };
     }
 
     return null;
   }
 
-  function updateVisitPanelNextButton(): void {
-    if (activeEditPanel?.kind !== 'readonly') {
-      visitPanelNext.hidden = true;
+  function getVisitNavigationTarget(visit: ParsedVisit, dateKey: string, direction: 'previous' | 'next'): VisitNavigationTarget | null {
+    const currentDayIndex = dayLayers.findIndex(({ day }) => day.dateKey === dateKey);
+    if (currentDayIndex === -1) return null;
+
+    const dayIndexStep = direction === 'next' ? 1 : -1;
+    for (
+      let dayIndex = currentDayIndex;
+      dayIndex >= 0 && dayIndex < dayLayers.length;
+      dayIndex += dayIndexStep
+    ) {
+      const dayLayer = dayLayers[dayIndex]!;
+      const currentVisitIndex = dayLayer.day.visits.findIndex(
+        candidate => candidate.startTime.getTime() === visit.startTime.getTime(),
+      );
+      const visitStartIndex = dayIndex === currentDayIndex
+        ? direction === 'next'
+          ? currentVisitIndex + 1
+          : currentVisitIndex - 1
+        : direction === 'next'
+          ? 0
+          : dayLayer.day.visits.length - 1;
+
+      if (dayIndex === currentDayIndex && currentVisitIndex === -1) {
+        continue;
+      }
+
+      let destinationVisit: ParsedVisit | undefined;
+      if (direction === 'next') {
+        destinationVisit = dayLayer.day.visits.find((candidate, candidateIndex) => {
+          if (candidateIndex < visitStartIndex) return false;
+          return getVisitMediaFiles(candidate).length > 0;
+        });
+      } else {
+        for (let candidateIndex = visitStartIndex; candidateIndex >= 0; candidateIndex -= 1) {
+          const candidate = dayLayer.day.visits[candidateIndex]!;
+          if (getVisitMediaFiles(candidate).length === 0) continue;
+          destinationVisit = candidate;
+          break;
+        }
+      }
+
+      if (!destinationVisit) continue;
+      const mediaFiles = getVisitMediaFiles(destinationVisit);
+      return {
+        visit: destinationVisit,
+        dateKey: dayLayer.day.dateKey,
+        dayLabel: dayLayer.day.label,
+        marker: getVisitMarker(dayLayer, destinationVisit),
+        mediaFiles,
+      };
+    }
+
+    return null;
+  }
+
+  function updateVisitPanelNavigationButtons(): void {
+    const isReadonlyVisit = activeEditPanel?.kind === 'readonly';
+    const showNavigation = isReadonlyVisit || isPhoneLayout();
+
+    visitPanelNavigation.hidden = !showNavigation;
+
+    if (!showNavigation) {
+      visitPanelPrevious.disabled = true;
       visitPanelNext.disabled = true;
       return;
     }
 
-    visitPanelNext.hidden = false;
-    visitPanelNext.disabled = getVisitNavigationTarget(activeEditPanel.visit, activeEditPanel.dateKey) === null;
+    if (!isReadonlyVisit) {
+      visitPanelPrevious.disabled = true;
+      visitPanelNext.disabled = selectedDay !== null || getFirstVisitWithMediaTarget() === null;
+      return;
+    }
+
+    const readonlyPanel = activeEditPanel as Extract<NonNullable<typeof activeEditPanel>, { kind: 'readonly' }>;
+    visitPanelPrevious.disabled = getVisitNavigationTarget(readonlyPanel.visit, readonlyPanel.dateKey, 'previous') === null;
+    visitPanelNext.disabled = getVisitNavigationTarget(readonlyPanel.visit, readonlyPanel.dateKey, 'next') === null;
   }
 
   function showReadonlyVisit(target: VisitNavigationTarget, options?: { scrollToVisit?: boolean }): void {
@@ -353,7 +410,7 @@ async function main(): Promise<void> {
       dayLabel: target.dayLabel,
       marker: target.marker,
     };
-    updateVisitPanelNextButton();
+    updateVisitPanelNavigationButtons();
   }
 
   function showVisitPanel(html: string, marker?: L.CircleMarker, opts?: { scrollToVisit?: boolean }): void {
@@ -392,7 +449,7 @@ async function main(): Promise<void> {
     visitPanel.setAttribute('aria-hidden', 'true');
     visitPanelContent.innerHTML = '';
     activeEditPanel = null;
-    updateVisitPanelNextButton();
+    updateVisitPanelNavigationButtons();
     invalidateMapSize();
     updateMobileActionButtons(true);
     if (options?.scrollToMap) {
@@ -406,6 +463,7 @@ async function main(): Promise<void> {
     if (activeEditPanel.kind === 'visit') {
       activeEditPanel.data.pendingDeletion = isVisitPendingDeletion(activeEditPanel.data.visitId);
       showVisitPanel(buildEditPanelHtml(activeEditPanel.visit, activeEditPanel.data), activeEditPanel.marker, { scrollToVisit: false });
+      updateVisitPanelNavigationButtons();
       wireEditPanelEvents(visitPanelContent, activeEditPanel.data);
       return;
     }
@@ -413,23 +471,26 @@ async function main(): Promise<void> {
     if (activeEditPanel.kind === 'path-point') {
       activeEditPanel.data.pendingDeletion = isPathPointPendingDeletion(activeEditPanel.data.pointId);
       showVisitPanel(buildPathPointEditPanelHtml(activeEditPanel.data), activeEditPanel.marker, { scrollToVisit: false });
+      updateVisitPanelNavigationButtons();
       wirePathPointEditPanelEvents(visitPanelContent, activeEditPanel.data);
       return;
     }
 
     if (activeEditPanel.kind === 'new-visit') {
       showVisitPanel(buildNewVisitPanelHtml(activeEditPanel.data), undefined, { scrollToVisit: false });
+      updateVisitPanelNavigationButtons();
       wireNewVisitPanelEvents(visitPanelContent, activeEditPanel.data);
       return;
     }
 
     if (activeEditPanel.kind === 'new-visit-disabled') {
       showVisitPanel(buildNewVisitDisabledPanelHtml(), undefined, { scrollToVisit: false });
+      updateVisitPanelNavigationButtons();
       return;
     }
 
     if (activeEditPanel.kind === 'readonly') {
-      updateVisitPanelNextButton();
+      updateVisitPanelNavigationButtons();
       return;
     }
   }
@@ -450,17 +511,29 @@ async function main(): Promise<void> {
 
   document.getElementById('visit-panel-close')!.addEventListener('click', () => hideVisitPanel({ scrollToMap: isPhoneLayout() }));
   visitPanelCollapse.addEventListener('click', () => hideVisitPanel({ scrollToMap: true }));
-  visitPanelNext.addEventListener('click', () => {
-    if (activeEditPanel?.kind !== 'readonly') return;
-    const nextTarget = getVisitNavigationTarget(activeEditPanel.visit, activeEditPanel.dateKey);
-    if (!nextTarget) return;
+  const navigateToAdjacentVisit = (direction: 'previous' | 'next'): void => {
+    let target: VisitNavigationTarget | null = null;
 
-    const shouldChangeDay = selectedDay !== null && nextTarget.dateKey !== activeEditPanel.dateKey;
-    if (shouldChangeDay) {
-      sidebar.selectDayByKey(nextTarget.dateKey, { fitBounds: true, source: 'next-visit' });
+    if (activeEditPanel?.kind === 'readonly') {
+      target = getVisitNavigationTarget(activeEditPanel.visit, activeEditPanel.dateKey, direction);
+    } else if (selectedDay === null && direction === 'next') {
+      target = getFirstVisitWithMediaTarget();
     }
 
-    showReadonlyVisit(nextTarget, { scrollToVisit: false });
+    if (!target) return;
+
+    if (selectedDay === null || selectedDay.dateKey !== target.dateKey) {
+      sidebar.selectDayByKey(target.dateKey, { fitBounds: true, source: 'next-visit' });
+    }
+
+    showReadonlyVisit(target, { scrollToVisit: false });
+  };
+
+  visitPanelPrevious.addEventListener('click', () => {
+    navigateToAdjacentVisit('previous');
+  });
+  visitPanelNext.addEventListener('click', () => {
+    navigateToAdjacentVisit('next');
   });
 
   // Marker clicks set this flag so the map's click handler knows to ignore the event.
@@ -474,6 +547,7 @@ async function main(): Promise<void> {
       if (!selectedDay) {
         showVisitPanel(buildNewVisitDisabledPanelHtml());
         activeEditPanel = { kind: 'new-visit-disabled' };
+        updateVisitPanelNavigationButtons();
         return;
       }
 
@@ -487,6 +561,7 @@ async function main(): Promise<void> {
       };
       showVisitPanel(buildNewVisitPanelHtml(data));
       activeEditPanel = { kind: 'new-visit', data };
+      updateVisitPanelNavigationButtons();
       wireNewVisitPanelEvents(visitPanelContent, data);
       return;
     }
@@ -512,6 +587,7 @@ async function main(): Promise<void> {
       };
       showVisitPanel(buildEditPanelHtml(visit, data), marker);
       activeEditPanel = { kind: 'visit', visit, data, marker };
+      updateVisitPanelNavigationButtons();
       wireEditPanelEvents(visitPanelContent, data);
     } else {
       showReadonlyVisit({ visit, mediaFiles, dateKey, dayLabel, marker });
@@ -533,6 +609,7 @@ async function main(): Promise<void> {
     };
     showVisitPanel(buildPathPointEditPanelHtml(data), marker);
     activeEditPanel = { kind: 'path-point', data, marker };
+    updateVisitPanelNavigationButtons();
     wirePathPointEditPanelEvents(visitPanelContent, data);
   };
 
@@ -570,7 +647,7 @@ async function main(): Promise<void> {
       const prevDay = selectedDay;
       selectedDay = day;
       updateMobileTopbar(day);
-      updateVisitPanelNextButton();
+      updateVisitPanelNavigationButtons();
       if (options.source === 'next-visit') {
         return;
       }
@@ -628,6 +705,7 @@ async function main(): Promise<void> {
 
   appShell.addEventListener('scroll', scheduleMobileActionButtonsUpdate, { passive: true });
   window.addEventListener('resize', scheduleMobileActionButtonsUpdate);
+  window.addEventListener('resize', updateVisitPanelNavigationButtons);
 
   // 5b. Sidebar diary editors (must run after buildSidebar has created the day-list DOM)
   if (isEditMode()) {
@@ -641,6 +719,7 @@ async function main(): Promise<void> {
   }
 
   invalidateMapSize();
+  updateVisitPanelNavigationButtons();
   updateMobileActionButtons(true);
 
   hideLoading();

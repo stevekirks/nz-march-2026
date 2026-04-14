@@ -571,31 +571,65 @@ body {
   color: var(--text-muted);
 }
 
+#visit-panel-navigation {
+  display: flex;
+  gap: 10px;
+  padding: 0 14px 14px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#visit-panel-previous,
 #visit-panel-next,
 #visit-panel-collapse {
   padding: 7px 10px;
-  font-size: 0.78rem;
+  font-size: 0.85rem;
   font-family: var(--font);
-  color: var(--text-muted);
+  color: var(--text);
   background: var(--bg-hover);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
+#visit-panel-previous,
 #visit-panel-next {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 1 1 0;
+}
+
+#visit-panel-collapse {
   margin-left: auto;
 }
 
-#visit-panel-next:hover,
+#visit-panel-previous:not(:disabled):hover,
+#visit-panel-next:not(:disabled):hover,
 #visit-panel-collapse:hover {
   color: var(--text);
 }
 
+#visit-panel-previous:not(:disabled):active,
+#visit-panel-next:not(:disabled):active,
+#visit-panel-collapse:active,
+#visit-panel-previous:not(:disabled):focus-visible,
+#visit-panel-next:not(:disabled):focus-visible,
+#visit-panel-collapse:focus-visible {
+  color: var(--text);
+}
+
+#visit-panel-previous:not(:disabled):focus-visible,
+#visit-panel-next:not(:disabled):focus-visible,
+#visit-panel-collapse:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+#visit-panel-previous:disabled,
 #visit-panel-next:disabled {
+  color: var(--text-muted);
   opacity: 0.5;
   cursor: default;
 }
@@ -1228,6 +1262,10 @@ body {
     width: min(320px, 36vw);
   }
 
+  #visit-panel-navigation[hidden] {
+    display: none;
+  }
+
   .edit-bar-secondary {
     flex-direction: column;
   }
@@ -1379,8 +1417,21 @@ body {
     pointer-events: auto;
   }
 
-  #visit-panel.visit-panel--open {
+  #visit-panel:not([hidden]) {
     display: flex;
+  }
+
+  #visit-panel-header,
+  #visit-panel-content {
+    display: none;
+  }
+
+  #visit-panel.visit-panel--open #visit-panel-header {
+    display: flex;
+  }
+
+  #visit-panel.visit-panel--open #visit-panel-content {
+    display: block;
   }
 
   #visit-panel-header {
@@ -1391,6 +1442,16 @@ body {
     font-size: 0.78rem;
   }
 
+  #visit-panel-navigation {
+    padding: 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  #visit-panel-navigation[hidden] {
+    display: flex;
+  }
+
+  #visit-panel-previous,
   #visit-panel-next {
     display: inline-flex;
     align-items: center;
@@ -1445,5 +1506,10 @@ body {
     min-height: 48px;
     padding: 0 14px;
     font-size: 0.9rem;
+  }
+
+  #visit-panel-navigation {
+    gap: 8px;
+    padding: 12px;
   }
 }
