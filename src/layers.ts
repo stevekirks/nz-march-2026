@@ -151,8 +151,14 @@ function mediaHtml(visitId: string, files: string[]): string {
 }
 
 function visitPopupHtml(v: ParsedVisit, mediaFiles: string[]): string {
-  const start = v.startTime.toLocaleString('en-NZ', { timeStyle: 'short', dateStyle: 'short' });
-  const end = v.endTime.toLocaleString('en-NZ', { timeStyle: 'short', dateStyle: 'short' });
+  const formatNzTime = (value: Date): string => value.toLocaleString('en-NZ', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: 'Pacific/Auckland',
+  });
+
+  const start = formatNzTime(v.startTime);
+  const end = formatNzTime(v.endTime);
   const duration = Math.round((v.endTime.getTime() - v.startTime.getTime()) / 60000);
   const durationStr = duration >= 60
     ? `${Math.floor(duration / 60)}h ${duration % 60}m`
