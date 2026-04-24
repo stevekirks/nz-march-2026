@@ -6,7 +6,7 @@ import type { RawTimeline } from './types';
 import mediaManifest from 'virtual:media-manifest';
 import { parseTimeline } from './parser';
 import { parseMetadata } from './metadataParser';
-import { initMap, buildDayLayers, computeBounds, buildVisitPanelContent } from './layers';
+import { initMap, buildDayLayers, computeBounds, buildVisitPanelContent, getVisitTypeLabel } from './layers';
 import type { VisitClickHandler } from './layers';
 import { buildSidebar, buildDayDetail, showLoading, hideLoading, wireResponsiveShell, isPhoneLayout } from './ui';
 import type { SidebarSelectionOptions } from './ui';
@@ -134,6 +134,7 @@ async function main(): Promise<void> {
 
   // ── Visit panel ────────────────────────────────────────────────────
   const visitPanel        = document.getElementById('visit-panel')!;
+  const visitPanelTitle   = document.getElementById('visit-panel-title')!;
   const visitPanelContent = document.getElementById('visit-panel-content')!;
   const visitPanelNavigation = document.getElementById('visit-panel-navigation')!;
   const visitPanelPrevious = document.getElementById('visit-panel-previous') as HTMLButtonElement;
@@ -402,7 +403,7 @@ async function main(): Promise<void> {
   }
 
   function showReadonlyVisit(target: VisitNavigationTarget, options?: { scrollToVisit?: boolean }): void {
-    showVisitPanel(buildVisitPanelContent(target.visit, target.mediaFiles), target.marker, options);
+    showVisitPanel(buildVisitPanelContent(target.visit, target.mediaFiles), target.marker, options, getVisitTypeLabel(target.visit));
     activeEditPanel = {
       kind: 'readonly',
       visit: target.visit,
@@ -413,7 +414,7 @@ async function main(): Promise<void> {
     updateVisitPanelNavigationButtons();
   }
 
-  function showVisitPanel(html: string, marker?: L.CircleMarker, opts?: { scrollToVisit?: boolean }): void {
+  function showVisitPanel(html: string, marker?: L.CircleMarker, opts?: { scrollToVisit?: boolean }, title = 'Visit details'): void {
     // Remove animation from the previously active marker
     if (activeMarker) {
       activeMarker.getElement()?.classList.remove('visit-marker--active');
@@ -423,6 +424,7 @@ async function main(): Promise<void> {
     if (activeMarker) {
       activeMarker.getElement()?.classList.add('visit-marker--active');
     }
+    visitPanelTitle.textContent = title;
     visitPanelContent.innerHTML = html;
     visitPanelContent.scrollTop = 0;
     visitPanel.classList.add('visit-panel--open');
