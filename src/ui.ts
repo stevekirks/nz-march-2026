@@ -8,7 +8,7 @@ export interface SidebarSelectionOptions {
   source?: 'default' | 'next-visit';
 }
 
-export const PHONE_LAYOUT_MEDIA_QUERY = '(max-width: 767px)';
+export const PHONE_LAYOUT_MEDIA_QUERY = '(max-width: 930px)';
 
 export function isPhoneLayout(): boolean {
   return window.matchMedia(PHONE_LAYOUT_MEDIA_QUERY).matches;

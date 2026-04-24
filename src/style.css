@@ -683,6 +683,7 @@ body {
 .popup-visit strong {
   font-size: 0.88rem;
   color: var(--accent);
+  overflow-wrap: anywhere;
 }
 
 .popup-visit--edit {
@@ -1267,8 +1268,26 @@ body {
     width: min(320px, 36vw);
   }
 
+  #visit-panel-header {
+    gap: 6px;
+    padding: 6px 6px;
+  }
+
+  #visit-panel-title {
+    min-width: 0;
+  }
+
   #visit-panel-navigation {
     padding-top: 14px;
+    gap: 6px;
+    padding-left: 10px;
+    padding-right: 10px;
+    flex-wrap: wrap;
+  }
+
+  #visit-panel-previous,
+  #visit-panel-next {
+    flex: 1 1 calc(50% - 3px);
   }
 
   #visit-panel-navigation[hidden] {
@@ -1284,7 +1303,7 @@ body {
   }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 930px) {
   html,
   body {
     height: 100%;
