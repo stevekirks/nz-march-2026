@@ -165,12 +165,7 @@ function visitPopupHtml(v: ParsedVisit, mediaFiles: string[]): string {
     : `${duration}m`;
 
   // Translate raw semantic type into a readable label
-  const rawType = v.semanticType ?? 'UNKNOWN';
-  const typeLabel = v.visitName
-    ? v.visitName
-    : rawType === 'UNKNOWN' || rawType === 'UNKNOWN_TYPE' || rawType === ''
-      ? 'Stop'
-      : rawType.charAt(0).toUpperCase() + rawType.slice(1).toLowerCase().replace(/_/g, ' ');
+  const typeLabel = getVisitTypeLabel(v);
 
   const coord = `${v.location.lat.toFixed(7)}°, ${v.location.lng.toFixed(7)}°`;
 
@@ -181,6 +176,16 @@ function visitPopupHtml(v: ParsedVisit, mediaFiles: string[]): string {
     <span>${durationStr}</span>
     ${mediaHtml(v.visitId ?? '', mediaFiles)}
   </div>`;
+}
+
+/** Returns the human-readable label for a visit's type or name. */
+export function getVisitTypeLabel(v: ParsedVisit): string {
+  const rawType = v.semanticType ?? 'UNKNOWN';
+  return v.visitName
+    ? v.visitName
+    : rawType === 'UNKNOWN' || rawType === 'UNKNOWN_TYPE' || rawType === ''
+      ? 'Stop'
+      : rawType.charAt(0).toUpperCase() + rawType.slice(1).toLowerCase().replace(/_/g, ' ');
 }
 
 /** Build the HTML content for a visit — used by the right-side visit panel. */

@@ -564,6 +564,11 @@ body {
 }
 
 #visit-panel-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.8rem;
   font-weight: 600;
   letter-spacing: 0.05em;
@@ -1260,6 +1265,10 @@ body {
 
   #visit-panel {
     width: min(320px, 36vw);
+  }
+
+  #visit-panel-navigation {
+    padding-top: 14px;
   }
 
   #visit-panel-navigation[hidden] {
