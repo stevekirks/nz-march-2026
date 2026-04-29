@@ -525,9 +525,10 @@ async function main(): Promise<void> {
     if (!target) return;
 
     if (selectedDay !== null && selectedDay.dateKey !== target.dateKey) {
-      sidebar.selectDayByKey(target.dateKey, { fitBounds: true, source: 'next-visit' });
+      sidebar.selectDayByKey(target.dateKey, { fitBounds: false, source: 'next-visit' });
     }
 
+    map.panTo([target.visit.location.lat, target.visit.location.lng]);
     showReadonlyVisit(target, { scrollToVisit: false });
   };
 
