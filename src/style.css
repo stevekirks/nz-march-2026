@@ -1492,10 +1492,6 @@ body {
     display: none;
   }
 
-  #visit-panel-close {
-    display: none;
-  }
-
   #visit-panel-content {
     flex: 0 0 auto;
     min-height: auto;

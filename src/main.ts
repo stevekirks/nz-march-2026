@@ -512,7 +512,7 @@ async function main(): Promise<void> {
   }
 
   document.getElementById('visit-panel-close')!.addEventListener('click', () => hideVisitPanel({ scrollToMap: isPhoneLayout() }));
-  visitPanelCollapse.addEventListener('click', () => hideVisitPanel({ scrollToMap: true }));
+  visitPanelCollapse.addEventListener('click', () => scrollToMapSection());
   const navigateToAdjacentVisit = (direction: 'previous' | 'next'): void => {
     let target: VisitNavigationTarget | null = null;
 
@@ -524,7 +524,7 @@ async function main(): Promise<void> {
 
     if (!target) return;
 
-    if (selectedDay === null || selectedDay.dateKey !== target.dateKey) {
+    if (selectedDay !== null && selectedDay.dateKey !== target.dateKey) {
       sidebar.selectDayByKey(target.dateKey, { fitBounds: true, source: 'next-visit' });
     }
 
@@ -568,12 +568,10 @@ async function main(): Promise<void> {
       return;
     }
     closeSidebarDrawer();
-    hideVisitPanel();
   });
-  // Close when the user intentionally drags the map
+  // Close sidebar drawer when the user intentionally drags the map
   map.on('dragstart', () => {
     closeSidebarDrawer();
-    hideVisitPanel();
   });
 
   const onVisitClick: VisitClickHandler = (visit, mediaFiles, dateKey, dayLabel, meta, marker) => {
@@ -637,7 +635,7 @@ async function main(): Promise<void> {
 
   mobileBackToMapButton.addEventListener('click', () => {
     closeSidebarDrawer();
-    hideVisitPanel({ scrollToMap: true });
+    scrollToMapSection();
   });
 
   // 5. Sidebar
