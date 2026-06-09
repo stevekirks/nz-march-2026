@@ -752,14 +752,28 @@ body {
 
 /* ── Popup media grid ─────────────────────────────────────────────────────── */
 .popup-media-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(128px, 100%), 1fr));
+  align-items: start;
+  gap: 8px;
   margin-top: 8px;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .popup-media-item {
   width: 100%;
+  min-width: 0;
+  min-height: 84px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--bg-hover) 72%, black);
+  border: 1px solid color-mix(in srgb, var(--border) 84%, var(--text-muted));
+  border-radius: 4px;
+}
+
+.popup-media-item a {
+  display: block;
+  color: inherit;
 }
 
 .popup-media-thumb {
@@ -767,10 +781,9 @@ body {
   /* Scale proportionally to fit the popup width and cap tall portraits */
   max-width: 100%;
   max-height: 240px;
-  width: auto;
+  width: 100%;
   height: auto;
-  border-radius: 4px;
-  border: 1px solid var(--border);
+  object-fit: contain;
   cursor: pointer;
   transition: opacity 0.15s;
 }
@@ -784,8 +797,7 @@ body {
   /* Fill popup width; browser preserves video aspect ratio */
   width: 100%;
   max-height: 240px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
+  object-fit: contain;
 }
 
 /* ── Edit mode export bar ─────────────────────────────────────────────────── */
@@ -1497,6 +1509,10 @@ body {
     min-height: auto;
     overflow: visible;
     padding: 14px;
+  }
+
+  .popup-media-grid {
+    grid-template-columns: 1fr;
   }
 
   #map-hint {
